@@ -1,0 +1,164 @@
+---
+title: "Introduction to ELVAR"
+author: "Alok K Maity and Andrew E Teschendorff"
+date: "`r Sys.Date()`"
+package: ELVAR
+
+output: 
+  BiocStyle::html_document:
+    theme: readable
+bibliography: ELVAR.bib  
+
+vignette: >
+  %\VignetteIndexEntry{Inference of differential abundance of cell-type from scRNA-seq using extended Louvain clustering algorithm}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r vignette-options, echo=FALSE, message=FALSE, warning=FALSE}
+require(BiocStyle)
+```
+> __Abstract: ELVAR is an R-package implementing an Extended Louvain clustering algorithm that takes cell attribute information into acccount when inferring cellular communities from scRNA-seq data. By taking cell attribute information into account, subtle cell clusters representing specific cell-states can be identified. As such, ELVAR can be used to infer differential abundance (DA) of cell-states in relation to disease risk factors or disease itself.__ 
+
+
+
+# Motivation and Background
+<p> The ability to quantify changes in cell-type abundance associated with different biological conditions is important to improve our understanding of disease risk factors and disease itself. In principle, ssingle-cell RNA-Seq (scRNA-Seq) data offers the opportunity to measure such differential abundance (DA) patterns. However, in practice this can be complicated due to technical and biological factors. One issue is that scRNA-Seq assays are influenced by cell-size which is known to vary between cell-types. As a result, inference of DA is best done by comparison of cellular states within a cell-type (e.g. different macrophage polarization states, or different CD4+ T-cell activation states), because cell-size is unlikely to confound such comparisons between states. Another challenge arises due to technical batch effects, which could confound observed cell numbers. To address this, it is necessary to obtain sample replicates for the same biological condition, for instance, sampling multiple mice at young and old ages. By measuring replicates one can also capture the biological variability. A third challenge is that we are often interested in inferring DA-patterns in relation to subtle phenotypes such as aging or exposure to risk factors, which means that the shifts in DA can be of small effect size and challenging to discern.</p>
+<p>In order to quantify DA in the context of subtle phenotypes, we consider the application of a generalized Louvain clustering method that we call ELVAR (Extended LouVain Algorithm), which is in effect an R-implementation of the EVA algorithm (@Rossini20018). ELVAR/EVA incorporates cell-type attribute information when clustering cells, i.e. it not only considers the topological relation of cells in the cell-cell neighborhood graph but also their attributes (e.g. age) when grouping cells into communities. We reasoned that taking cell attribute information could thus help identify clusters that better represent cellular states associated with subtle phenotypes such as aging or exposure to disease risk factors. Once the cell clusters are identified, the procedure to perform DA follows by identification of the cells representing the cellular states, and subsequent negative binomial regressions (NBRs) using sample replicate information into account to infer if the proportions of these states change in relation to some phenotype of interest. We stress that the reason for doing clustering of cells at all (as opposed to directly running NBRs) is to ensure that the cells of the same grouping being used in the inference do indeed represent the same cellular state, a fundamental assumption underlying any DA-analysis. </p>
+<p> In this tutorial vignette we will illustrate the application of ELVAR (note that ELVAR here refers to the whole algorithmic pipeline for DA-analysis, and not just the EVA algorithm) to aging to identify a subtle shift in the proportion of naive to activated Cd4+ T-cells.
+
+# Tutorial Example
+In order to run the tutorial, we must first load in the necessary libraries and scRNA-Seq dataset:
+
+## Loading required packages
+```{r chunk1, eval=T, echo=T, message=FALSE}
+library(ELVAR)
+library(Seurat)
+library(Matrix)
+library(dplyr)
+library(igraph)
+library(MASS)
+library(ggplot2)
+data(lungCD4Tinfo);
+print(dim(lungCD4Tsel.m));
+```
+The scRNA-Seq dataset is a 10X lung-tissue dataset of Cd4+ T-cells from the Tabula Muris Senis (@TMS). The data consists of 537 Cd4+ T-cells from 11 mice representing 5 different age groups (1m, 3m, 18m, 21m and 30m, m=months). The phenotype information of the cells is in the `phenoCD4T.lv` object, with the age of cells annotated with 0 (1m), 1 (3m), 2 (18m), 3 (21m) and 5 (30m). Because no mice were sampled at age 24 months, we don't have a "4". In addition to age, we have also annotated the cells according to their naive(1)/mature(0) status, using the known Lef1 marker expression to indicate naive Cd4+ T-cells. Building a table of age-group vs activation status 
+
+```{r chunk1b, eval=T, echo=T, message=FALSE}
+table(phenoCD4T.lv$age,phenoCD4T.lv$naive)
+```
+we can see that there is clear trend towards less naive (1) Cd4+ T-cells with increased age. However, we can't be sure that the cells in each category are really in the same cellular state, as defined by the state-manifold. Hence, we need to first derive the state-manifold, and then infer relevant cell clusters.
+
+## Deriving the state-manifold
+In order to derive the state-manifold, i.e. the cell-cell nearest neighbor graph, we will
+make use of the popular Seurat algorithm to first process and explore the data:
+
+```{r chunk2, eval=T, echo=T, message=FALSE}
+
+seu.o <- CreateSeuratObject(as.matrix(lungCD4Tsel.m),project = "seuratLungCD4T")
+# assign phenotypes
+seu.o$age <- phenoCD4T.lv$age
+seu.o$naive <- phenoCD4T.lv$naive
+seu.o$mouse <- phenoCD4T.lv$mouse
+seu.o <- FindVariableFeatures(seu.o, selection.method = "vst");
+seu.o <- ScaleData(seu.o);
+seu.o <- RunPCA(seu.o,verbose=FALSE);
+ElbowPlot(seu.o);
+```
+
+We now proceed to build the state-manifold and to visualize the data:
+
+```{r chunk2b, eval=T, echo=T, message=FALSE}
+seu.o <- FindNeighbors(seu.o, dims = 1:8, k.param=20);
+seu.o <- FindClusters(seu.o, resolution = 0.1);
+seu.o <- RunTSNE(seu.o, dims = 1:10);
+```
+
+Of note, we have chosen the cell-cell graph to have a connectivity of 20, i.e each cell is connected to another 19 (this is because Seurat takes self-loops into account). Next, we visualise the data:
+
+```{r chunk3, eval=T, echo=T}
+DimPlot(seu.o, reduction = "tsne", group.by = c("seurat_clusters", "age","naive", "mouse"));
+```
+We can observe how there are two main clusters that correlate with age and activation status. We now proceed to extract the state-manifold in preparation for EVA-clustering:
+
+```{r chunk3, eval=T, echo=T, message=FALSE}
+adj.m <- as.matrix(seu.o@graphs$RNA_nn)
+diag(adj.m) <- 0
+gr.o <- graph.adjacency(adj.m,mode="undirected");
+vertexN.v <- names(V(gr.o));
+vertex_attr(gr.o,name="age") <- seu.o@meta.data$age;
+comp.o <- components(gr.o);
+print(is.connected(gr.o));
+```
+
+In the above, we have assigned the age of the cells as an attribute to the cell-cell nearest neighbor graph, since later we are going to search for clusters that are enriched for specific age-groups. In order to run the EVA-algorithm it is important that the graph is connected, which is the case here.
+
+
+## Inferring cellular communities with EVA
+We are now ready to infer the cellular communities within the state-manifold. We do this using the EVA algorithm, which as mentioned earlier takes cell attribute information into account when inferring clusters.
+```{r chunk4, eval=T, echo=T, message=FALSE}
+eva.o <- Eva_partitions(gr.o, resolution=1, threshold=0.0000001, alpha= 0.8, Vattr.name= "age");
+```
+Before inspecting the output it is worth explaining what the arguments to this functions mean. The `resolution` parameter controls the average size of the communities. Community size decreases with increasing resolution value. In general, the default value of 1 is acceptable for all applications considered here. The `threshold` parameter is the tolerance threshold for the optimization function. In general, the default value is ok for most circumstances and does not need to be altered. The `alpha` parameter is the most important parameter as it controls the relative importance of purity (defined by how homogeneous the inferred communities are in relation to the cell attribute of interest) and modularity (the Louvain modularity compares the edge density of the communities to that of a null distribution obtained by randomising edges keeping the degrees fixed). The parameter `alpha` varies between 0 (favours high modularity) and 1 (favours high purity), with `alpha=0` in effect being the standard Louvain algorithm. In the above we have chosen `alpha=0.8` because at this choice of alpha we observe improved purity without substantial degradation in the modularity. To see this, we import precomputed purity and modularities as estimated from 100 different runs at different choices of alpha:
+
+```{r chunk5, fig.width=7,fig.height=3, fig.fullwidth=T, eval=T, echo=T}
+data(purmodInfo);
+par(mfrow=c(1,2));
+par(mar=c(4,4,2,1));
+boxplot(pur.m ~ col(pur.m),ylim=c(0,1),ylab="Purity",xlab="alpha",names=colnames(pur.m));
+boxplot(mod.m ~ col(mod.m),ylim=c(0,1),ylab="Modularity",xlab="alpha",names=colnames(pur.m));
+```
+
+Now, we are ready to inspect the output of the EVA/ELVAR algorithm. Because the inferred communities can display some variation depending on the run, we load in a precomputed typical output. In practice one would run the algorithm a significant number of times (100 times say) to ensure that results are robust. First, we overlay the measured purity and modularity values:
+
+
+```{r chunk6, fig.width=7,fig.height=3, fig.fullwidth=T, eval=T, echo=T}
+data(evaout);
+par(mfrow=c(1,2));
+par(mar=c(4,4,2,1));
+boxplot(pur.m ~ col(pur.m),ylim=c(0,1),ylab="Purity",xlab="alpha",names=colnames(pur.m));
+points(x=8,y=eva.o$Pur,pch=21,col="red",bg="red");
+boxplot(mod.m ~ col(mod.m),ylim=c(0,1),ylab="Modularity",xlab="alpha",names=colnames(pur.m));
+points(x=8,y=eva.o$Mod,pch=21,col="green",bg="green");
+```
+This shows that the given run falls within the distribution of modularity and purity values for `alpha=0.8`, as required. The next step is to explore which communities are enriched for which age-groups. Since age information was used as an attribute in the clustering, the expectation is that a reasonable number of clusters should be enriched for various age-groups. First, let us look at the distribution of cells per inferred cluster and age-group:
+
+```{r chunk7, eval=T, echo=T, message=FALSE}
+table(eva.o$CommunityMembers,seu.o@meta.data$age)
+```
+To assess which clusters are overenriched in specific age-groups we derive a P-value of significance using a Binomial test, subsequently selecting for each age-group the significant clusters using a Bonferroni significance threshold. If for a given age-group there are multiple enriched clusters, we will merge the cells from these clusters and age-group together. These steps can be accomplished using the `ProcessEVA` function:
+
+```{r chunk8, eval=T, echo=T, message=FALSE}
+sigcl.o <- ProcessEVA(eva.o,seu.o,attrName="age");
+print(sigcl.o$pvalEnr);
+```
+Thus, we can see that for specific age-groups, certain clusters are strongly enriched. To check which clusters have been selected for each age-group:
+```{r chunk9, eval=T, echo=T, message=FALSE}
+print(sigcl.o$sigClust);
+```
+We can see that for the first age-group, two clusters (clusters 2 and 5) have been selected, for the third age-group no enriched cluster was found, and for the two older age-groups, there is one unique enriched cluster. The next step is to perform a differential abundance analysis. Specifically, we are interested in knowing whether the relative propotion of naive to mature Cd4+ T-cells changes with age. Before we do so, it is valuable to check how many sample replicates (in our case these are mouse replicates) contribute to enriched cell-clusters from each age-group:
+```{r chunk10, eval=T, echo=T, message=FALSE}
+table(seu.o@meta.data$age[unlist(sigcl.o$cellsMrg)],seu.o@meta.data$mouse[unlist(sigcl.o$cellMrg)]);
+```
+We can see that for each age-group (labeled along rows), there are two mouse replicates contributing cells. This therefore allows us to assess inter-subject variability when assessing DA.
+
+## Differential abundance (DA) analysis
+Before running the DA-analysis, it is useful to first retabulate the distribution of naive vs mature Cd4+ T-cells as a function of age-group, but now restricting to the high-confidence cells, i.e. the cells defining enriched clusters, which hence define valid cell-states:
+```{r chunk11, eval=T, echo=T, message=FALSE}
+tab.m <- table(seu.o@meta.data$age[unlist(sigcl.o$cellsMrg)],seu.o@meta.data$naive[unlist(sigcl.o$cellsMrg)]);
+tab.m;
+chisq.test(tab.m);
+```
+We can see that there is a clear skew towards reduced naive Cd4+ T-cell fraction which age. However, this analysis ignores sample replicate information, and so could be biased. In order to perform the DA-analysis taking replicate information into account, we can run the function `DoDA` as follows:
+
+```{r chunk12, eval=T, echo=T, message=FALSE}
+da.o <- DoDA(eva.o,seu.o,sigcl.o,varDA="naive",varREP="mouse");
+print(da.o$stat);
+```
+In the above, in the function `DoDA` we had to specify which is the cell-state variable that we want to perform DA for, as well as the variable defining the sample replicates. In our case, the cell-state variable is the naive/mature status of the cells, whereas the sample replicate refers to the different mice. The function `DoDA` performs the negative binomial regressions, and the output statistics show that whilst the mature/activated (CS0) Cd4+ T-cell fraction increases with age, that the corresponding naive (CS1) Cd4+ T-cell fraction decreases. The P-values are highly significant and having anchored the analysis on cell-states defined on the state-manifold and having taken inter-subject variability into account, we can be much more confident of the result we obtained earlier using the non-rigorous approach.
+
+
+# Session Info
+```{r sessionInfo, eval=T, echo=T}
+sessionInfo()
+```

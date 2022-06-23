@@ -1,0 +1,17 @@
+Package: ELVAR
+Title: Extended Louvain Clustering Algorithm for Differential Abundance testing
+Version: 0.1.1
+Description: The ELVAR R-package implements a cell-attribute clustering algorithm called EVA to help identify cellular states associated with specific cell attributes (e.g. age). The package includes a downstream function to then perform robust differential abundance testing of cellular states (e.g. T-cell subtypes) across the cell attribute(s) used in the EVA-clustering step, using sample replicate information into account. The last step requires sample replicate information, and currently we only one cell attribute to be used when performing EVA.
+Date: 2022-06-22
+Author: Andrew E Teschendorff
+Maintainer: Andrew Teschendorff <andrew@picb.ac.cn>
+Depends: R (>= 4.2.0)
+Imports: Seurat, Matrix, dplyr, igraph, MASS
+Suggests: roxygen2, BiocStyle, knitr, rmarkdown
+VignetteBuilder: knitr
+License: GPL-3
+LazyData: true
+NeedsCompilation: no
+Encoding: UTF-8
+RoxygenNote: 7.1.2
+
