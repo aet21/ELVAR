@@ -4,7 +4,7 @@ author:
 - name: "Alok Maity and Andrew E. Teschendorff"
   affiliation: 
   - CAS Key Lab of Computational Biology, PICB, SINH
-date: "2022-06-23"
+date: "2023-02-22"
 package: ELVAR
 output:
   BiocStyle::html_document:
@@ -13,7 +13,7 @@ output:
 
 # Summary
 
-ELVAR is an R-package implementing an Extended Louvain clustering algorithm that takes cell attribute information into acccount when inferring cellular communities from scRNA-seq data. By taking cell attribute information into account, subtle cell clusters representing specific cell-states can be identified. As such, ELVAR can be used to infer differential abundance (DA) of cell-states in relation to disease risk factors or disease itself.
+ELVAR is an R-package for differential abundance (DA) testing of cell-types in single-cell RNA-Seq data. It implements an Extended Louvain clustering Algorithm (EVA) that takes cell attribute information into acccount when inferring cellular communities from the cell-cell nearest neighbour graph. By taking cell attribute information into account, improved community detection is possible, which improves the power to detect DA-shifts of cell-types in relation to disease risk factors or disease itself.
 
 # Installation
 
