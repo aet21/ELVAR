@@ -1,53 +1,53 @@
-#' @title 
+#' @title
 #' Processes the output of the EVA clustering algorithm
-#' 
+#'
 #' @aliases ProcessEVA
-#'  
-#' @description 
-#' This function takes as input the result of an EVA-clustering plus the metacell information from the seurat
+#'
+#' @description
+#' This function takes as input the result of an EVA-clustering plus the metacell information from the Seurat
 #' scRNA-Seq data object, to identify for each attribute value the communities enriched for cells with that
 #' attribute value. This is done using a binomial test. Once the enriched clusters for each attribute value
 #' are found, cells from these clusters and with the given attribute value are merged.
-#' 
+#'
 #' @param eva.o
 #' The output from running the EVA-clustering algorithm.
-#' 
+#'
 #' @param seu.o
 #' The Seurat scRNA-Seq data object containing the metacell information.
 #'
 #' @param attrName
-#' The name of the attribute to use for testing enrichment of clusters. Must be one of the names
+#' The name of the attribute is used for testing enrichment of clusters. Must be one of the names
 #' in the metadata slot of the Seurat object.
 #'
 #' @param sigth
 #' The significance threshold on the binomial-test P-values for declaring enrichment.
 #' If not specified (default), the function will use a Bonferroni correction.
-#' 
+#'
 #' @return A list with four elements
-#' 
+#'
 #' @return pvalEnr
 #' The enrichment P-value matrix defined over clusters (rows) and attribute values (columns).
 #'
 #' @return sigth
 #' The significance threshold used to declare enriched clusters.
-#' 
+#'
 #' @return sigClust
 #' A list of enriched cluster identifiers, each list entry representing one attribute value.
-#' 
+#'
 #' @return cellsMrg
 #' A list of cell indices indicating which cells of a given attribute value are in enriched clusters
 #' for that attribute value. Each entry in the list represents an attribute value.
-#' 
-#' 
-#' @references 
-#' Qi Luo, Alok K Maity, Andrew E Teschendorff
-#' \emph{Distance Covariance Entropy reveals primed states and bifurcation dynamics in single-cell RNA-Seq data}
-#' Submitted.
-#' 
-#' 
-#' @examples 
 #'
-#' 
+#'
+#' @references
+#' Alok K Maity, Andrew E Teschendorff
+#' \emph{Cell-Attribute aware community detection improves differential abundance testing from single-cell RNA-Seq data}
+#' Submitted.
+#'
+#'
+#' @examples
+#'
+#'
 #' @export
 #'
 
@@ -55,13 +55,12 @@ ProcessEVA <- function(eva.o,seu.o,attrName,sigth=NULL){
 
    tmp.idx <- which(names(seu.o@meta.data)==attrName);
    if(length(tmp.idx)==0){
-        print("Attribute name not found! Please recheck!");
-        break;
+        stop("Attribute name not found! Please recheck!");
    }
    else if (length(tmp.idx)>0){
-       tabClust.m <- table(eva.o$CommunityMember,seu.o@meta.data[[tmp.idx]]);
+       tabClust.m <- table(eva.o$CommunityMembers,seu.o@meta.data[[tmp.idx]]);
    }
-   
+
   nCellAttrVal.v <- apply(tabClust.m,2,sum)
   nCellClust.v <- apply(tabClust.m,1,sum)
   nCells <- sum(nCellAttrVal.v);
@@ -82,7 +81,7 @@ ProcessEVA <- function(eva.o,seu.o,attrName,sigth=NULL){
   if(is.null(sigth)){
    sigth <- 0.05/(length(nCellClust.v)*length(nCellAttrVal.v));
   }
-    
+
   sigClustAttrVal.lv <- list();
   for(attr in 1:length(nCellAttrVal.v)){
    sig.idx <- which(pvalEnrAttrVal.m[,attr] < sigth);
@@ -90,7 +89,7 @@ ProcessEVA <- function(eva.o,seu.o,attrName,sigth=NULL){
   }
 
  nClustAttrVal.v <- unlist(lapply(sigClustAttrVal.lv,length));
-    
+
  ### Now merge cells from different enriched clusters per attribute value
  attrVal.v <- colnames(tabClust.m);
  cellsMrg.li <- list();

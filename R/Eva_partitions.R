@@ -19,7 +19,7 @@
 #' @param threshold
 #' If change in the quality function (score) is less than the threshold, iteration loop will be terminated
 #' @param alpha
-#' Tuning parameter that makes balance between purity and modularity during optimization
+#' Tuning parameter that modulates the relative importance of purity and modularity during optimization
 #' @param order
 #' Defines numerical order among the characters present within an attribute
 #' @param Vattr.name

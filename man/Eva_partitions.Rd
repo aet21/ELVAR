@@ -20,7 +20,7 @@ Eva_partitions(
 
 \item{threshold}{If change in the quality function (score) is less than the threshold, iteration loop will be terminated}
 
-\item{alpha}{Tuning parameter that makes balance between purity and modularity during optimization}
+\item{alpha}{Tuning parameter that modulates the relative importance of purity and modularity during optimization}
 
 \item{order}{Defines numerical order among the characters present within an attribute}
 
@@ -37,10 +37,4 @@ The code is a generalized Louvain clustering method that we call ELVAR (Extended
 which is an R-implementation of the EVA algorithm. In ELVAR algorithm, node attributes information
 along with graph topology enhance to find more relevant clusters specially when
 clusters are not well-separated in high dimensional space.
-}
-\examples{
-
-}
-\references{
-
 }
