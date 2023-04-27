@@ -4,7 +4,7 @@ author:
 - name: "Alok Maity and Andrew E. Teschendorff"
   affiliation: 
   - CAS Key Lab of Computational Biology, PICB, SINH
-date: "2023-02-22"
+date: "2023-04-27"
 package: ELVAR
 output:
   BiocStyle::html_document:
@@ -26,4 +26,4 @@ devtools::install_github("aet21/ELVAR")
 
 # References
 
-A generalized Louvain algorithm for improved inference of differential abundance from single-cell RNA-Seq data. Alok K Maity, Andrew E Teschendorff. Submitted 2022.
+Cell-attribute aware community detection improves differential abundance testing from single-cell RNA-Seq data. Alok K Maity, Andrew E Teschendorff. Submitted 2022.
